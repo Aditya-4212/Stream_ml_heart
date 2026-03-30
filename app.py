@@ -10,19 +10,17 @@ from sklearn.decomposition import PCA
 from sklearn.metrics import silhouette_score
 
 import plotly.express as px
+import shap
 
 # =========================
-# PAGE CONFIG (DARK UI)
+# PAGE CONFIG
 # =========================
-st.set_page_config(
-    page_title="Advanced ML Dashboard",
-    layout="wide"
-)
+st.set_page_config(page_title="Elite ML Dashboard", layout="wide")
 
-st.title("🚀 Advanced ML Clustering Dashboard")
+st.title("🚀 Elite ML Clustering Dashboard")
 
 # =========================
-# LOAD DATA (AUTO)
+# LOAD DATA
 # =========================
 @st.cache_data
 def load_data():
@@ -30,19 +28,41 @@ def load_data():
 
 try:
     df = load_data()
-    st.success("✅ Dataset loaded: cleaned_data.csv")
+    df = df.dropna()
 except:
-    st.error("❌ cleaned_data.csv not found. Make sure it's in the same folder.")
+    st.error("❌ cleaned_data.csv not found")
     st.stop()
 
-st.subheader("📊 Dataset Preview")
+# =========================
+# DATA OVERVIEW
+# =========================
+st.subheader("📊 Data Overview")
+
+c1, c2, c3 = st.columns(3)
+c1.metric("Rows", df.shape[0])
+c2.metric("Columns", df.shape[1])
+c3.metric("Missing", df.isnull().sum().sum())
+
 st.dataframe(df.head())
+
+# =========================
+# FILTERS
+# =========================
+st.sidebar.header("🔍 Filters")
+
+filtered_df = df.copy()
+
+for col in df.select_dtypes(include=['int64','float64']).columns:
+    min_val = float(df[col].min())
+    max_val = float(df[col].max())
+    val = st.sidebar.slider(col, min_val, max_val, (min_val, max_val))
+    filtered_df = filtered_df[(filtered_df[col] >= val[0]) & (filtered_df[col] <= val[1])]
+
+df = filtered_df
 
 # =========================
 # FEATURE ENGINEERING
 # =========================
-st.subheader("⚙️ Feature Engineering")
-
 if 'weight' in df.columns and 'height' in df.columns:
     df['BMI'] = df['weight'] / ((df['height']/100) ** 2)
 
@@ -52,10 +72,9 @@ if 'ap_hi' in df.columns:
                               labels=['Normal','Elevated','High'])
 
 # =========================
-# TARGET SELECTION
+# TARGET
 # =========================
 target_col = st.selectbox("Select Target Column", df.columns)
-
 X = df.drop(columns=[target_col])
 
 # =========================
@@ -70,131 +89,135 @@ if len(num_cols) > 0:
     transformers.append(('num', StandardScaler(), num_cols))
 
 if len(cat_cols) > 0:
-    transformers.append(('cat', OneHotEncoder(handle_unknown='ignore'), cat_cols))
+    transformers.append(('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), cat_cols))
 
 preprocessor = ColumnTransformer(transformers)
 X_processed = preprocessor.fit_transform(X)
 
 # =========================
-# SIDEBAR SETTINGS
+# SIDEBAR CONTROLS
 # =========================
-st.sidebar.header("⚙️ Model Controls")
+st.sidebar.header("🎛️ Model Controls")
 
-k = st.sidebar.slider("Clusters (KMeans / Hierarchical)", 2, 10, 3)
+mode = st.sidebar.radio("Mode", ["Single Model", "Compare Models"])
+
+model_name = st.sidebar.selectbox("Model", ["KMeans", "DBSCAN", "Hierarchical"])
+
+k = st.sidebar.slider("Clusters (K)", 2, 10, 3)
 eps = st.sidebar.slider("DBSCAN eps", 0.1, 5.0, 0.5)
-min_samples = st.sidebar.slider("DBSCAN min_samples", 2, 10, 5)
+min_samples = st.sidebar.slider("Min Samples", 2, 10, 5)
+
+run = st.sidebar.button("🚀 Run")
 
 # =========================
-# TRAIN MODELS
+# FUNCTION
 # =========================
-models = {
-    "KMeans": KMeans(n_clusters=k, random_state=42, n_init=10),
-    "DBSCAN": DBSCAN(eps=eps, min_samples=min_samples),
-    "Hierarchical": AgglomerativeClustering(n_clusters=k)
-}
+def run_model(model):
+    labels = model.fit_predict(X_processed)
 
-results = {}
+    if len(set(labels)) > 1 and -1 not in set(labels):
+        idx = np.random.choice(len(X_processed), size=min(3000, len(X_processed)), replace=False)
+        score = silhouette_score(X_processed[idx], labels[idx])
+    else:
+        score = -1
 
-st.subheader("📊 Model Comparison")
+    return labels, score
 
-for name, model in models.items():
-    try:
-        labels = model.fit_predict(X_processed)
+# =========================
+# TABS
+# =========================
+tab1, tab2, tab3 = st.tabs(["📊 Single Model", "⚖️ Comparison", "🔍 Explainability"])
 
-        if len(set(labels)) > 1 and -1 not in set(labels):
-            sample_idx = np.random.choice(len(X_processed), size=min(3000, len(X_processed)), replace=False)
-            score = silhouette_score(X_processed[sample_idx], labels[sample_idx])
+# =========================
+# SINGLE MODEL
+# =========================
+with tab1:
+    if run and mode == "Single Model":
+
+        if model_name == "KMeans":
+            model = KMeans(n_clusters=k, random_state=42, n_init=10)
+        elif model_name == "DBSCAN":
+            model = DBSCAN(eps=eps, min_samples=min_samples)
         else:
-            score = -1
+            model = AgglomerativeClustering(n_clusters=k)
 
-        results[name] = (labels, score)
+        labels, score = run_model(model)
+        df['Cluster'] = labels
 
-    except Exception as e:
-        results[name] = (None, -1)
-        st.error(f"{name} failed: {e}")
+        # METRICS
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Model", model_name)
+        c2.metric("Clusters", len(set(labels)))
+        c3.metric("Score", f"{score:.4f}" if score != -1 else "N/A")
 
-scores_df = pd.DataFrame({
-    "Model": results.keys(),
-    "Silhouette Score": [v[1] for v in results.values()]
-})
+        # PCA
+        pca = PCA(n_components=2)
+        X_pca = pca.fit_transform(X_processed)
 
-st.dataframe(scores_df)
+        pca_df = pd.DataFrame({
+            "PC1": X_pca[:,0],
+            "PC2": X_pca[:,1],
+            "Cluster": labels.astype(str)
+        })
 
-best_model_name = scores_df.sort_values(by="Silhouette Score", ascending=False).iloc[0]["Model"]
-st.success(f"🏆 Best Model: {best_model_name}")
-
-labels = results[best_model_name][0]
-df['Cluster'] = labels
-
-# =========================
-# PCA VISUALIZATION (PLOTLY)
-# =========================
-st.subheader("📉 Interactive Cluster Visualization")
-
-pca = PCA(n_components=2)
-X_pca = pca.fit_transform(X_processed)
-
-pca_df = pd.DataFrame({
-    "PC1": X_pca[:,0],
-    "PC2": X_pca[:,1],
-    "Cluster": labels.astype(str)
-})
-
-fig = px.scatter(
-    pca_df,
-    x="PC1",
-    y="PC2",
-    color="Cluster",
-    title="Cluster Visualization (PCA)",
-)
-
-st.plotly_chart(fig, use_container_width=True)
+        fig = px.scatter(pca_df, x="PC1", y="PC2", color="Cluster")
+        st.plotly_chart(fig, use_container_width=True)
 
 # =========================
-# CLUSTER PROFILE
+# COMPARISON
 # =========================
-st.subheader("📊 Cluster Profile")
+with tab2:
+    if run and mode == "Compare Models":
 
-profile = df.groupby('Cluster').mean(numeric_only=True)
-st.dataframe(profile)
+        models = {
+            "KMeans": KMeans(n_clusters=k, random_state=42, n_init=10),
+            "DBSCAN": DBSCAN(eps=eps, min_samples=min_samples),
+            "Hierarchical": AgglomerativeClustering(n_clusters=k)
+        }
 
-# =========================
-# AUTO INSIGHTS
-# =========================
-st.subheader("🧠 Auto Insights")
+        results = {}
 
-for cluster in profile.index:
-    st.write(f"### Cluster {cluster}")
-    row = profile.loc[cluster]
+        for name, model in models.items():
+            try:
+                _, score = run_model(model)
+                results[name] = score
+            except:
+                results[name] = -1
 
-    if 'cardio' in df.columns:
-        if row['cardio'] > 0.7:
-            st.error("🚨 High Risk Group")
-        elif row['cardio'] > 0.4:
-            st.warning("⚠️ Medium Risk Group")
-        else:
-            st.success("✅ Low Risk Group")
+        scores_df = pd.DataFrame({
+            "Model": list(results.keys()),
+            "Score": list(results.values())
+        })
 
-    if 'BMI' in row and row['BMI'] > 25:
-        st.warning("⚠️ Overweight cluster")
+        st.dataframe(scores_df)
 
-    if 'ap_hi' in row and row['ap_hi'] > 140:
-        st.error("🚨 High Blood Pressure")
-
-# =========================
-# SAVE MODEL
-# =========================
-st.subheader("💾 Save Model")
-
-if st.button("Save Best Model"):
-    with open("best_model.pkl", "wb") as f:
-        pickle.dump(models[best_model_name], f)
-    st.success("Model saved as best_model.pkl")
+        best = scores_df.sort_values(by="Score", ascending=False).iloc[0]
+        st.success(f"🏆 Best Model: {best['Model']}")
 
 # =========================
-# DOWNLOAD DATA
+# SHAP EXPLAINABILITY
 # =========================
-st.subheader("⬇️ Download Results")
+with tab3:
+    if run and mode == "Single Model":
+
+        st.subheader("🔍 SHAP Feature Importance")
+
+        try:
+            sample = X_processed[:100]
+
+            explainer = shap.Explainer(lambda x: model.fit_predict(x), sample)
+            shap_values = explainer(sample)
+
+            shap.summary_plot(shap_values, show=False)
+            st.pyplot(bbox_inches='tight')
+
+        except Exception as e:
+            st.warning("SHAP not supported for this model")
+
+# =========================
+# DOWNLOAD
+# =========================
+st.subheader("⬇️ Download")
 
 csv = df.to_csv(index=False).encode('utf-8')
-st.download_button("Download Clustered Data", csv, "clustered_data.csv")
+st.download_button("Download Results", csv, "clustered_data.csv")
