@@ -28,7 +28,7 @@ st.set_page_config(
     page_title="ClusterMind — ML Clustering Platform",
     page_icon="🧠",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 # ─────────────────────────────────────────────────────────────────
@@ -65,7 +65,10 @@ html, .stApp {
     color: var(--text-primary);
 }
 #MainMenu, footer, header { visibility: hidden; }
-.block-container { padding: 1rem 2rem 3rem 2rem; max-width: 1400px; }
+.block-container {
+    padding: 0.6rem;
+    max-width: 100%;
+}
 
 /* ── HEADER ── */
 .app-header {
@@ -127,7 +130,7 @@ html, .stApp {
 /* ── METRIC CARDS ── */
 .metric-row { display:flex; gap:1rem; margin-bottom:1rem; flex-wrap:wrap; }
 .metric-card {
-    flex:1; min-width:140px;
+    flex:1 1 200px; min-width:unset;
     background:var(--bg-card);
     border:1px solid var(--border);
     border-radius:14px;
@@ -284,7 +287,10 @@ html, .stApp {
     background:var(--bg-card) !important;
     border-right:1px solid var(--border) !important;
 }
-[data-testid="stSidebar"] .block-container { padding:1rem 1rem 2rem 1rem; }
+[data-testid="stSidebar"] .block-container {
+    padding: 0.6rem;
+    max-width: 100%;
+}
 .sidebar-logo {
     font-family:'Syne', sans-serif;
     font-size:1.3rem;
@@ -408,6 +414,23 @@ input[type="number"], .stTextInput input {
     color:var(--text-muted);
     border:1px solid var(--border);
 }
+
+/* ===== MOBILE RESPONSIVENESS FIX ===== */
+@media (max-width: 768px) {
+    .block-container { padding: 0.5rem !important; }
+    .app-header { padding: 1rem !important; }
+    .app-title { font-size: 1.6rem !important; }
+    .app-tagline { font-size: 0.8rem !important; }
+    .metric-row { flex-direction: column !important; }
+    .metric-card { width: 100% !important; }
+    .section-title { font-size: 0.9rem !important; }
+    .stTabs [data-baseweb="tab"] {
+        font-size: 0.7rem !important;
+        padding: 0.3rem 0.5rem !important;
+    }
+    .stButton > button { width: 100% !important; }
+}
+
 </style>
 """, unsafe_allow_html=True)
 
