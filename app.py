@@ -80,7 +80,7 @@ html, .stApp {
     position: relative;
     overflow: hidden;
 }
-.app-header::before {
+.app-header::before, .app-header::after {
     content:'';
     position:absolute; top:-60%; right:-5%;
     width:500px; height:500px;
@@ -130,7 +130,7 @@ html, .stApp {
 /* ── METRIC CARDS ── */
 .metric-row { display:flex; gap:1rem; margin-bottom:1rem; flex-wrap:wrap; }
 .metric-card {
-    flex:1 1 200px; min-width:unset;
+    flex:1; min-width:unset;
     background:var(--bg-card);
     border:1px solid var(--border);
     border-radius:14px;
@@ -415,20 +415,22 @@ input[type="number"], .stTextInput input {
     border:1px solid var(--border);
 }
 
-/* ===== MOBILE RESPONSIVENESS FIX ===== */
-@media (max-width: 768px) {
-    .block-container { padding: 0.5rem !important; }
-    .app-header { padding: 1rem !important; }
-    .app-title { font-size: 1.6rem !important; }
-    .app-tagline { font-size: 0.8rem !important; }
-    .metric-row { flex-direction: column !important; }
-    .metric-card { width: 100% !important; }
-    .section-title { font-size: 0.9rem !important; }
-    .stTabs [data-baseweb="tab"] {
-        font-size: 0.7rem !important;
-        padding: 0.3rem 0.5rem !important;
-    }
-    .stButton > button { width: 100% !important; }
+/* ===== CLICK FIX ===== */
+.app-header {
+    position: relative;
+    z-index: 1;
+}
+.app-header::before,
+.app-header::after {
+    pointer-events: none;
+    z-index: -1;
+}
+.stButton > button {
+    position: relative;
+    z-index: 10;
+}
+.js-plotly-plot {
+    pointer-events: auto !important;
 }
 
 </style>
@@ -939,8 +941,7 @@ with st.sidebar:
     st.markdown('<div class="sidebar-logo">🧠 ClusterMind</div>', unsafe_allow_html=True)
 
     st.markdown("**Select Mode**")
-    app_mode = st.radio(
-        "",
+    app_mode = st.radio("Select Option",
         ["🤖 Online Mode (AutoML)", "📚 Manual Mode (Learning)"],
         key="app_mode_radio",
         label_visibility="collapsed"
